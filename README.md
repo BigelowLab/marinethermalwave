@@ -20,7 +20,11 @@ In a nutshell, conditions that identify a heat/cold wave are…
 - daily values fall below the 10th percentile of values for the day of
   year measured over the last 30 years, and
 
-- the even persists for 5 or more days\*.
+- the event persists for 5 or more days\*.
+
+<!-- -->
+
+    * There is some allowance to merge heat/cold waves that are interrupted by up to 2 days
 
 Here we replicate Hobday’s first framework using [Copernicus Global
 Ocean Physics Reanalysis
