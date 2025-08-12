@@ -7,9 +7,15 @@ suppressPackageStartupMessages({
   library(scales)
 })
 
-list_mtw = function(p = 90,
+
+#' Generate a listing of available files
+#' 
+#' @param prob numeric percentile (0-100)
+#' @param path the path to the percentile data directories
+#' @return a named vector of full filenames
+list_mtw = function(prob = 90,
                      path = andreas::copernicus_path("mtw","chfc")){
-  ff = list.files(file.path(path, sprintf("q%0.2i", p[1])), 
+  ff = list.files(file.path(path, sprintf("q%0.2i", prob[1])), 
                   full.names = TRUE,
                   pattern = "^.*\\.tif$") 
   doys = gsub(".tif", "", basename(ff), fixed = TRUE)
@@ -18,16 +24,23 @@ list_mtw = function(p = 90,
 }
 
 
+#' Generate the MTW even data for Copernicus `thetao` surface data
+#' 
+#' @param prob number, one or more probablilities (percentiles)
+#' @param dates Date, two element start and stop
+#' @return stars object with sst (thetao), phi, plo and mwe (marine weather event)
+#'    heating events are positive, cooling events are negative
 generate_mtw = function(prob = c(10, 90),
-                         event_window = 5){
+                        dates = c(Sys.Date() - 5, Sys.Date() + 10)){
   
+  dates = seq(from = dates[1], to = dates[2], by = "day")
   cpath = andreas::copernicus_path("chfc/GLOBAL_ANALYSISFORECAST_PHY_001_024")
-  pfiles_lo = list_mtw(p = prob[1])
-  pfiles_hi = list_mtw(p = prob[2])
+  pfiles_lo = list_mtw(prob = prob[1])
+  pfiles_hi = list_mtw(prob = prob[2])
   cDB = andreas::read_database(cpath) |>
     dplyr::filter(variable == "thetao") |>
     dplyr::arrange(date) |>
-    dplyr::filter(date >= Sys.Date() - event_window) |>
+    dplyr::filter(date %in% dates) |>
     dplyr::mutate(doy = format(.data$date, "%j"))
   
   ss = cDB |>
@@ -58,27 +71,16 @@ generate_mtw = function(prob = c(10, 90),
   do.call(c, append(ss, list(along = list(time = cDB$date))))
 }
 
-count_mwe = function(x = generate_mtw()){
-  m = x['mwe'][[1]]
-  mhi = (m > 0) * 1
-  mhics = apply(mhi, 1:2, cumsum) |>
-    aperm(c(2,3,1))
-  mlo = (m < 0) * 1
-  mlocs = apply(mlo, 1:2, cumsum) |>
-    aperm(c(2,3,1))
-  
-  m = m * 0
-  ihi = which(mhics > 0)
-  m[ihi] = mhics[ihi]
-  ilo = which(mlocs > 0)
-  m[ilo] = 0 - mlocs[ilo]
-  
-  r = x['mwe'] |>
-    rlang::set_names("mtw")
-  r[[1]] = m
-  r
-}
 
+#' Given marine thermal wave data, compute duration of heating/cooling waves
+#' 
+#' @param x stars object that includes 'mwe' 
+#' @param event_window num, the number of days needed to define an event
+#' @param gap_width num, when gaps of this or fewer days occur between events, 
+#'   try to merge the events
+#' @param mask logical, if TRUE, then mask the result so only events of 
+#'   event_window days are returned.  Shorter events are set to 0.
+#' @return stars object with records of thermal waves durations (hence "mtwd").
 encode_mtwd = function(x = generate_mtw(), 
                        event_window = 5, 
                        gap_width = 2,
@@ -132,16 +134,34 @@ encode_mtwd = function(x = generate_mtw(),
 
 
 if (FALSE){
-  x = generate_mtw()
-  n = encode_mtwd(x)
+  mtw = generate_mtw()
+  mtwd = encode_mtwd(mtw)
 }
 
 
-plot_mtw = function(x){
+#' Plot a set of 'mtwd' rasters
+#' 
+#' @param x stars 'mtwd' raster ala `encode_mtwd`
+#' @return ggplot2 object 
+plot_mtwd = function(x = encode_mtwd()){
   ggplot() + 
     geom_stars(data = x[1]) +
     scale_fill_gradient2(high = scales::muted("red"), 
                          low = scales::muted("blue")) + 
+    coord_equal() +
+    facet_wrap(~time) +
+    theme_void() +
+    scale_x_discrete(expand=c(0,0))+
+    scale_y_discrete(expand=c(0,0))
+}
+
+
+plot_mtw = function(x = generate_mtw()){
+  ggplot() + 
+    geom_stars(data = x['mwe']) +
+    scale_fill_gradient2(high = scales::muted("red"), 
+                         low = scales::muted("blue"),
+                         guide = "none") + 
     coord_equal() +
     facet_wrap(~time) +
     theme_void() +
@@ -161,4 +181,23 @@ plot_count = function(x = count_mwe()){
     scale_y_discrete(expand=c(0,0))
 }
 
-
+count_mwe = function(x = generate_mtw()){
+  m = x['mwe'][[1]]
+  mhi = (m > 0) * 1
+  mhics = apply(mhi, 1:2, cumsum) |>
+    aperm(c(2,3,1))
+  mlo = (m < 0) * 1
+  mlocs = apply(mlo, 1:2, cumsum) |>
+    aperm(c(2,3,1))
+  
+  m = m * 0
+  ihi = which(mhics > 0)
+  m[ihi] = mhics[ihi]
+  ilo = which(mlocs > 0)
+  m[ilo] = 0 - mlocs[ilo]
+  
+  r = x['mwe'] |>
+    rlang::set_names("mtw")
+  r[[1]] = m
+  r
+}
