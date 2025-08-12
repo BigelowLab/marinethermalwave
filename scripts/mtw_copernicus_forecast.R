@@ -59,17 +59,87 @@ generate_mtw = function(prob = c(10, 90),
 }
 
 count_mwe = function(x = generate_mtw()){
-  stars::st_apply(x['mwe'], 1:2, cumsum)
+  m = x['mwe'][[1]]
+  mhi = (m > 0) * 1
+  mhics = apply(mhi, 1:2, cumsum) |>
+    aperm(c(2,3,1))
+  mlo = (m < 0) * 1
+  mlocs = apply(mlo, 1:2, cumsum) |>
+    aperm(c(2,3,1))
+  
+  m = m * 0
+  ihi = which(mhics > 0)
+  m[ihi] = mhics[ihi]
+  ilo = which(mlocs > 0)
+  m[ilo] = 0 - mlocs[ilo]
+  
+  r = x['mwe'] |>
+    rlang::set_names("mtw")
+  r[[1]] = m
+  r
 }
 
-s = generate_mtw()
-n = count_mwe(s)
+encode_mtwd = function(x = generate_mtw(), 
+                       event_window = 5, 
+                       gap_width = 2,
+                       mask = TRUE){
+  if ('mwe' %in% names(x)) x = x['mwe']
+  m = x[[1]]
+  R = apply(m, 1:2, 
+            function(v = c(0,1,1,1,1,1,0,0,1,1,1,1,1,1,-1)){
+              r = rle(v)
+              # right here we need to deal with gaps <= gap_width
+              # if a gap < gap_width and before/after are the same sign
+              # and greater than event_window than it is 
+              ix = r$lengths <= gap_width
+              if (any(ix)){
+                ix = which(ix)
+                for (i in ix){
+                  if (i == 1){
+                    # skip - do nothing
+                  } else if (i == length(r$lengths)) {
+                    # skip - do nothing
+                  } else {
+                    # merge the runs... by adjusting v
+                    if (sign(r$values[i-1]) == sign(r$values[i+1]) &&
+                        r$lengths[i-1] >= event_window[1] && 
+                        r$lengths[i+1] >= event_window[1] ){
+                        # gap is less than gap_width, 
+                        # signs before and after are the same
+                        # each is at least event_window long
+                        starts = cumsum(c(1, r$lengths))
+                        start = starts[i-1]
+                        len = sum(r$lengths[(i-1):(i+1)])
+                        index = seq(from = start, length = len)
+                        v[index] = r$values[i-1]
+                    } # signs are the same before and after - otherwise skip
+                  }
+                }
+                r = rle(v)
+              } # any ix
+              n = rep(r$lengths, times = r$lengths) * sign(v)
+              n
+            }) |>
+    aperm(c(2,3,1))
+  if (mask) {
+    ix = R > (-1*event_window) & R < event_window
+    R[ix] <- 0
+  }
+  x[[1]] <- R
+  names(x) <- "mtwd"
+  x
+}
 
+
+if (FALSE){
+  x = generate_mtw()
+  n = encode_mtwd(x)
+}
 
 
 plot_mtw = function(x){
   ggplot() + 
-    geom_stars(data = s['mwe']) +
+    geom_stars(data = x[1]) +
     scale_fill_gradient2(high = scales::muted("red"), 
                          low = scales::muted("blue")) + 
     coord_equal() +
