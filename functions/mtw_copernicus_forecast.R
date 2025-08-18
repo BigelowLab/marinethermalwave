@@ -1,6 +1,5 @@
 suppressPackageStartupMessages({
   library(stars)
-  library(oisster)
   library(andreas)
   library(dplyr)
   library(ggplot2)
@@ -14,7 +13,7 @@ suppressPackageStartupMessages({
 #' @param path the path to the percentile data directories
 #' @return a named vector of full filenames
 list_mtw = function(prob = 90,
-                     path = andreas::copernicus_path("mtw","chfc")){
+                    path = andreas::copernicus_path("mtw","chfc", "thetao")){
   ff = list.files(file.path(path, sprintf("q%0.2i", prob[1])), 
                   full.names = TRUE,
                   pattern = "^.*\\.tif$") 
@@ -24,21 +23,22 @@ list_mtw = function(prob = 90,
 }
 
 
-#' Generate the MTW even data for Copernicus `thetao` surface data
+#' Generate the MTW event data for Copernicus `thetao` surface data
 #' 
 #' @param prob number, one or more probablilities (percentiles)
 #' @param dates Date, two element start and stop
 #' @return stars object with sst (thetao), phi, plo and mwe (marine weather event)
 #'    heating events are positive, cooling events are negative
 generate_mtw = function(prob = c(10, 90),
+                        varname = "thetao",
                         dates = c(Sys.Date() - 5, Sys.Date() + 10)){
   
   dates = seq(from = dates[1], to = dates[2], by = "day")
-  cpath = andreas::copernicus_path("chfc/GLOBAL_ANALYSISFORECAST_PHY_001_024")
+  coppath = andreas::copernicus_path("chfc/GLOBAL_ANALYSISFORECAST_PHY_001_024")
   pfiles_lo = list_mtw(prob = prob[1])
   pfiles_hi = list_mtw(prob = prob[2])
-  cDB = andreas::read_database(cpath) |>
-    dplyr::filter(variable == "thetao") |>
+  cDB = andreas::read_database(coppath) |>
+    dplyr::filter(variable == varname[1]) |>
     dplyr::arrange(date) |>
     dplyr::filter(date %in% dates) |>
     dplyr::mutate(doy = format(.data$date, "%j"))
@@ -47,15 +47,12 @@ generate_mtw = function(prob = c(10, 90),
     dplyr::rowwise() |>
     dplyr::group_map(
       function(row, key){
-        #print(row)
-        
         p_hi = stars::read_stars(pfiles_hi[row$doy]) |>
-          
           rlang::set_names("p_hi")
         p_lo = stars::read_stars(pfiles_lo[row$doy]) |>
           rlang::set_names("p_lo")
         
-        sst = compose_filename(row, cpath) |>
+        sst = andreas::compose_filename(row, coppath) |>
           stars::read_stars() |>
           rlang::set_names("sst")
         stars::st_dimensions(sst) <- stars::st_dimensions(p_hi)
@@ -138,6 +135,17 @@ if (FALSE){
   mtwd = encode_mtwd(mtw)
 }
 
+# https://stat.ethz.ch/pipermail/r-help/2009-August/401258.html
+mround <- function(x,base){
+  base*round(x/base)
+}
+
+mtwd_breaks = function(x = encode_mtwd(),
+                       base = 5){
+   r = range(x[1][[1]], na.rm = TRUE) |>
+       mround(base)
+   seq(from = r[1], to = r[2], by = 5)
+}
 
 #' Plot a set of 'mtwd' rasters
 #' 
@@ -146,8 +154,10 @@ if (FALSE){
 plot_mtwd = function(x = encode_mtwd()){
   ggplot() + 
     geom_stars(data = x[1]) +
-    scale_fill_gradient2(high = scales::muted("red"), 
-                         low = scales::muted("blue")) + 
+    scale_fill_steps2(name = "days",
+                      breaks = mtwd_breaks(x),
+                      high = scales::muted("red"), 
+                      low = scales::muted("blue")) + 
     coord_equal() +
     facet_wrap(~time) +
     theme_void() +
@@ -156,12 +166,19 @@ plot_mtwd = function(x = encode_mtwd()){
 }
 
 
+
+
+
+
 plot_mtw = function(x = generate_mtw()){
   ggplot() + 
     geom_stars(data = x['mwe']) +
-    scale_fill_gradient2(high = scales::muted("red"), 
-                         low = scales::muted("blue"),
-                         guide = "none") + 
+    #scale_fill_gradient2(high = scales::muted("red"), 
+    #                     low = scales::muted("blue"),
+    #                     guide = "none") + 
+    scale_fill_manual(values = mtwd_colors(),
+                      breaks = c(-15, -10, -5, 0, 5, 10, 15),
+                      guide = "none") + 
     coord_equal() +
     facet_wrap(~time) +
     theme_void() +
