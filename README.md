@@ -7,7 +7,10 @@ output: github_document
 
 [Hobday et al (2016)](https://www.sciencedirect.com/science/article/abs/pii/S0079661116000057) proposed a framework for identify marine thermal waves (mtw).  Although the authors focused on marine heat waves, the framework applies to cold waves equally well. [Hobday et al (2018)](https://tos.org/oceanography/article/categorizing-and-naming-marine-heatwaves) followed up with an additional framework for categorizing the severity of heat waves.  [Huang et al (2024)](https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2024GL108369) deployed a similar framework for study of recent conditions.
 
-![plot of chunk plot](figure/plot-1.png)
+
+```
+## Error in `st_dimensions<-.stars`(`*tmp*`, value = stars::st_dimensions(p_hi)): length(x) && all(dim(x[[1]]) == dim(value)) is not TRUE
+```
 
 Here we replicate Hobday's first framework using  [Copernicus Global Ocean Physics Reanalysis data](https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_PHY_001_030/description) and [Copernicus Global Ocean Physics Analysis and Forecast data](https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_PHY_001_024/description) to develop a daily forecast (and hindcast) map for the region covering Cape Hatteras in North Carolina to Newfoundland including the Flemish Cap. 
 
