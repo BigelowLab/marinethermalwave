@@ -18,47 +18,70 @@ suppressPackageStartupMessages({
   library(charlier)
 })
 
-main = function(prob = c(0.1, 0.9), N = 30, varname = "thetao"){
-  charlier::start_logger(file.path(varpath, "log.txt"))
-  charlier::info("varname: %s, N: %i, probs: %s", 
-                 varname, N, paste(prob, collapse = ", "))
+# mthw/chfc/thetao/q10
+# <root>/region/variable/depth/qNN/001.tif
+main = function(probs = c(0.1, 0.9), 
+                N = 30, 
+                region = 'chfc',
+                varnames = c("thetao", "so"),
+                depths = c("sur", "bot") ){
+  charlier::start_logger(file.path(regionpath, "log.txt"))
+  charlier::info("varname: %s, depths: %s N: %i, probs: %s", 
+                 paste(varnames, collapse = ", "), 
+                 paste(depths, collapse = ", "),
+                 N, 
+                 paste(probs, collapse = ", "))
   r = andreas::read_database(datapath, multiple = TRUE) |>
     dplyr::filter(period == "day",
-                  variable == varname[1],
+                  variable %in% varnames,
+                  depth %in% depths,
                   treatment == "raw") |>
     dplyr::filter(date <= as.Date("2023-12-31")) |>
     dplyr::arrange(date) |>
     dplyr::mutate(doy = format(date, "%j")) |>
-    dplyr::group_by(doy) |>
-    dplyr::slice_tail(n = N[1]) |>
+    dplyr::group_by(variable, depth, doy) |>
+    dplyr::slice_tail(n = N[1]) |>    # magically it takes the earliest N per doy
+                                      # day 366 will be less than N but let's ignore
+                                      # that issue for now
     dplyr::group_map(
       function(grp, key){
-        charlier::info("varname: %s doy: %s", varname, key$doy[1])
-        ofile = file.path(opath, sprintf("%s.tif", key$doy[1]))
+        charlier::info("varname: %s depth: %s doy: %s", 
+                       key$variable, key$depth, key$doy)
+        # mthw/chfc/thetao/q10
+        # <root>/region/variable/depth/qNN/001.tif
+        ofile = file.path(regionpath,
+                          key$variable, 
+                          key$depth,
+                          sprintf("q%0.2i", probs * 100),
+                          sprintf("%s.tif", key$doy))
+        odir = dirname(ofile)
+        if (!all(dir.exists(odir))) ok = sapply(odir, dir.create, recursive = TRUE, showWarnings = FALSE)
         r = andreas::read_andreas(grp, datapath) |>
-          stars::st_apply(1:2, quantile, probs = prob, na.rm = TRUE)
-        for (i in seq_along(prob)){
+          stars::st_apply(1:2, quantile, probs = probs, na.rm = TRUE)
+        for (i in seq_along(probs)){
           dplyr::slice(r, "quantile", i) |>
             stars::write_stars(ofile[i])
         }
         dates = range(grp$date)
         dplyr::tibble(
-          varname = varname, 
+          varname = key$variable, 
+          depth = key$depth,
           doy = key$doy[1],
           first = dates[1],
           last = dates[2],
           n = nrow(grp),
           probs = Args$prob)
-      }) |>
+      }, .keep = TRUE) |>
     dplyr::bind_rows() |>
     readr::write_csv(file.path(outpath, "metadata.csv"))
   return(0)
 }
 
-parse_probs = function(x = "0.1,0.9"){
-  strsplit(x, ",", fixed = TRUE)[[1]] |> 
-    as.numeric()
+parse_argument = function(x, type = c("character", "numeric")[1], sep = '[,+]'){
+  strsplit(x, sep)[[1]] |>
+    as(type)
 }
+
 
 Args = arg_parser("Computes N-year daily of p percentiles for each day of year",
                   name = "mtw_copernicus_percentiles.R",
@@ -70,24 +93,40 @@ Args = arg_parser("Computes N-year daily of p percentiles for each day of year",
                           help = "number of recent years to compute percentiles",
                           default = 30) |>
   argparser::add_argument("--varname",
-                          help = "variable name",
-                          default = "thetao") |>
+                          help = "variable name(s) such as 'thetao' or 'thetao+so'",
+                          default = "thetao+so") |>
+  argparser::add_argument("--depth",
+                          help = "depth(s) such as 'sur' or 'sur+bot'",
+                          default = "sur+bot") |>
+  argparser::add_argument("--region",
+                          help = "one regional code ala 'chfc' - just one",
+                          default = "chfc") |>
   argparser::add_argument("--email",
                           help = "email to send at end, 'none' to skip",
                           default = "none") |>
   argparser::parse_args()
 
 
-datapath = andreas::copernicus_path("chfc")
-prob = parse_probs(Args$prob)
+region = Args$region[1]
+regionpath = andreas::copernicus_path("mthw", region)
+datapath = andreas::copernicus_path(region)
+probs = parse_argument(Args$prob, type = "numeric")
 N = Args$n
-varname = Args$varname
-varpath = andreas::copernicus_path("mtw", "chfc", varname)
-opath = andreas::copernicus_path(varpath, sprintf("q%0.2i", prob * 100))
-if (!all(dir.exists(opath))) ok = sapply(opath, dir.create, recursive = TRUE, showWarnings = FALSE)
+varnames =  parse_argument(Args$varname)
+depths =  parse_argument(Args$depth)
+
+# premake the output directories
+# mthw/chfc/thetao/q10
+# <root>/region/variable/depth/qNN/001.tif
+varpaths = andreas::copernicus_path("mthw", region, varnames)
+if (!all(dir.exists(varpaths))) ok = sapply(varpaths, dir.create, recursive = TRUE, showWarnings = FALSE)
+#opaths = lapply(varpaths,
+#                function(varpath) andreas::copernicus_path(varpath, sprintf("q%0.2i", prob * 100))) |>
+#  unlist()
+#if (!all(dir.exists(opaths))) ok = lapply(opaths, dir.create, recursive = TRUE, showWarnings = FALSE)
 
 if (!interactive()){
-  ok = main(prob = prob, N = N, varname = varname)
+  ok = main(probs = probs, N = N, varname = varnames, depth = depths, region = region)
   if (grepl("@", Args$email, fixed = TRUE)){
     charlier::sendmail(to = Args$email,
                        subject = "mtw_copernicus_percentile is done",
