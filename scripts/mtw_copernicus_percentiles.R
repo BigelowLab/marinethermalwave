@@ -18,6 +18,16 @@ suppressPackageStartupMessages({
   library(charlier)
 })
 
+variable_lut = dplyr::tribble(
+  ~variable, ~name, ~longname
+  "thetao", "temp", "potential temperature",
+  "bottomT", "temp", "bottom temperature",
+  "tob", "temp", "bottom temperature",
+  "sst", "temp", "sea surface temperature",
+  "so", "sal", "salinity",
+  "sob", "sal", "bottom salinity",
+  "sss", "sal", "salinity")
+
 # mthw/chfc/thetao/q10
 # <root>/region/variable/depth/qNN/001.tif
 main = function(probs = c(0.1, 0.9), 
@@ -73,7 +83,7 @@ main = function(probs = c(0.1, 0.9),
           probs = Args$prob)
       }, .keep = TRUE) |>
     dplyr::bind_rows() |>
-    readr::write_csv(file.path(outpath, "metadata.csv"))
+    readr::write_csv(file.path(andreas::copernicus_path("mthw"), "metadata.csv"))
   return(0)
 }
 
