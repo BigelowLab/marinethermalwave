@@ -30,6 +30,7 @@ main = function(probs = c(0.1, 0.9),
                 varnames = c("temp", "sal"),
                 depths = c("sur", "bot"),
                 lut = variable_lut()){
+
   charlier::start_logger(file.path(regionpath, "log.txt"))
   charlier::info("varname: %s, depths: %s N: %i, probs: %s", 
                  paste(varnames, collapse = ", "), 
@@ -123,7 +124,7 @@ varnames =  parse_argument(Args$varname)
 depths =  parse_argument(Args$depth)
 
 if (!interactive()){
-  ok = main(probs = probs, N = N, ds, depth = depths, region = region)
+  ok = main(probs = probs, N = N, varnames, depth = depths, region = region)
   if (grepl("@", Args$email, fixed = TRUE)){
     charlier::sendmail(to = Args$email,
                        subject = "mtw_copernicus_percentile is done",
